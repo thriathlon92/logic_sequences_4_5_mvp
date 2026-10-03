@@ -1,0 +1,47 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #283b35;
+  background: #f5f3ee;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+}
+.shell {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  text-align: center;
+}
+h1 {
+  max-width: 720px;
+  font-size: clamp(1.75rem, 4vw, 3rem);
+  line-height: 1.2;
+}
+p {
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+.shapes {
+  display: flex;
+  gap: 18px;
+}
+.shapes span {
+  width: 48px;
+  height: 48px;
+  background: #52866f;
+  border-radius: 50%;
+}
+.shapes span:nth-child(2) {
+  border-radius: 10px;
+  background: #c08a36;
+}

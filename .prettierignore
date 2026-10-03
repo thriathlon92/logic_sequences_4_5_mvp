@@ -1,0 +1,7 @@
+pnpm-lock.yaml
+dist/
+node_modules/
+playwright-report/
+test-results/
+logic-sequences-4-5-mvp-spec (1).md
+docs/product-spec.md
