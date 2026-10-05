@@ -94,7 +94,12 @@ E2E в каждом проекте: полный путь с возвратом 
 Также через GitHub API подтверждён успешный Actions run W01
 [37137048447](https://github.com/thriathlon92/logic_sequences_4_5_mvp/actions/runs/37137048447).
 
-Результат CI W02 будет зафиксирован после push и завершения workflow.
+Коммит реализации W02 `6d506ba0d43168a41205b756cf06106c0e1d779e`
+отправлен в `origin/main`. GitHub Actions — **SUCCESS**:
+[run 37352030778](https://github.com/thriathlon92/logic_sequences_4_5_mvp/actions/runs/37352030778).
+Workflow выполнил frozen install, установку Chromium/WebKit и `corepack pnpm check`
+на Ubuntu. Этот результат подтверждён через GitHub API; запись о нём добавлена
+отдельным документационным коммитом после завершения CI.
 Публичный preview не создаётся; Figma, Canva и другие интеграции не подключались.
 
 ## Намеренно не реализовано
