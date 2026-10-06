@@ -144,6 +144,11 @@ test('двойные клики и быстрые повторные taps не �
   page,
   isMobile,
 }) => {
+  // Freeze browser time: geometry assertions on a slow CI must not consume
+  // the 500 ms input lock before the deliberately rapid second tap.
+  await page.clock.install({ time: new Date('2026-10-06T12:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-10-06T12:00:01Z'));
+  await page.reload();
   const start = page.getByRole('button', { name: 'Начать' });
   if (isMobile) await start.tap();
   else await start.dblclick();
@@ -157,6 +162,10 @@ test('двойные клики и быстрые повторные taps не �
     await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   else await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await checkScreen(page, 'Карта занятий');
+  await expect(next).toBeDisabled();
+  await page.clock.runFor(499);
+  await expect(next).toBeDisabled();
+  await page.clock.runFor(1);
   await expect(next).toBeEnabled();
   await activate(page, 'Начать демонстрационное занятие', isMobile);
   await checkScreen(page, 'Найди такой же');
