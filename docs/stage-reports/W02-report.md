@@ -263,7 +263,13 @@ Workflow на Ubuntu выполнил frozen install, установку Chromiu
 через nightly.link (прямое скачивание логов GitHub API без авторизации недоступно).
 Тест исправлен управляемыми браузерными часами и явной проверкой границы
 499/500 мс; реализация интерфейса не менялась. После исправления повторён
-полный локальный check. Новый CI будет подтверждён для итогового SHA.
+полный локальный check — **PASS** (6 component tests и 24 E2E).
+
+Коммит исправления теста `52b8ce8488fa3ec33690deec8418abb6c55b7dc2`
+отправлен в `origin/main`. GitHub Actions — **SUCCESS**:
+[run 37505394803](https://github.com/thriathlon92/logic_sequences_4_5_mvp/actions/runs/37505394803).
+Успешный итог для этого SHA подтверждён GitHub API и записан
+в отчёт отдельным документационным коммитом. W02 — `READY_FOR_REVIEW`.
 
 Внешние действия этого прохода: проверка удалённого HEAD, git push и read-only
 чтение GitHub Actions через GitHub API и скачивание публичного отчёта CI через nightly.link. Публичный preview не создавался;
