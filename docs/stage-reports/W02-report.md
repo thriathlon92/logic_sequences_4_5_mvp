@@ -242,8 +242,17 @@ WebKit и iPad Mini emulation не заменяют физический Safari/
 
 ### GitHub Actions корректирующего прохода
 
-Коммит и push выполняются после полного локального check.
-Результат GitHub Actions будет подтверждён для отправленного SHA.
+Коммит реализации `4e5796458f09301b36e1f5be49ead4c47d72d08f` отправлен
+в `origin/main` после полного локального check. GitHub Actions:
+[run 37503180672](https://github.com/thriathlon92/logic_sequences_4_5_mvp/actions/runs/37503180672).
+Итог — **SUCCESS**. SHA и итог подтверждены через GitHub API.
+Workflow на Ubuntu выполнил frozen install, установку Chromium/WebKit
+и полный `corepack pnpm check`. Результат CI записан отдельным
+документационным коммитом после завершения проверки реализации.
+
+Внешние действия этого прохода: проверка удалённого HEAD, git push и read-only
+чтение GitHub Actions через GitHub API. Публичный preview не создавался;
+другие интеграции не подключались.
 
 ### Границы и статус
 
