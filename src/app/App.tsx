@@ -139,6 +139,7 @@ export function App() {
                 </span>
               </div>
               <span
+                key={mistake?.attempt ?? 0}
                 className="action-guide"
                 data-guide-target="answers"
                 aria-hidden="true"

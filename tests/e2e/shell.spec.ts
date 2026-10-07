@@ -18,6 +18,99 @@ test.afterEach(async ({ page }) => {
   expect(browserMessages.get(page)).toEqual([]);
 });
 
+async function checkGuideStyles(page: Page) {
+  const visual = await page.locator('.action-guide').evaluate((element) => {
+    const style = getComputedStyle(element);
+    const target = document.getElementById(
+      element.getAttribute('data-guide-target')!,
+    );
+    const primary =
+      target?.tagName === 'BUTTON' ? getComputedStyle(target) : null;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const animation = element.getAnimations()[0];
+    const frames =
+      animation?.effect instanceof KeyframeEffect
+        ? animation.effect.getKeyframes().map((frame) => {
+            const matrix = new DOMMatrix(String(frame.transform));
+            return { y: matrix.m42, scale: matrix.m11 };
+          })
+        : [];
+    function contrast(first: string, second: string) {
+      function luminance(color: string) {
+        const channels = color
+          .match(/[\d.]+/g)!
+          .slice(0, 3)
+          .map(Number)
+          .map((channel) => channel / 255)
+          .map((channel) =>
+            channel <= 0.04045
+              ? channel / 12.92
+              : ((channel + 0.055) / 1.055) ** 2.4,
+          );
+        return (
+          channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722
+        );
+      }
+      const a = luminance(first);
+      const b = luminance(second);
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    }
+    return {
+      reduced,
+      color: style.color,
+      shaft: getComputedStyle(element, '::before').backgroundColor,
+      tip: getComputedStyle(element, '::after').borderTopColor,
+      shadow: style.filter,
+      opacity: style.opacity,
+      pointerEvents: style.pointerEvents,
+      name: style.animationName,
+      duration: parseFloat(style.animationDuration) * 1000,
+      easing: style.animationTimingFunction,
+      iterations: style.animationIterationCount,
+      frames,
+      primary: primary && {
+        background: primary.backgroundColor,
+        shadow: primary.boxShadow,
+        name: primary.animationName,
+        contrast: contrast(style.color, primary.backgroundColor),
+      },
+    };
+  });
+  expect(visual.color).toBe('rgb(255, 176, 0)');
+  expect(visual.shaft).toBe(visual.color);
+  expect(visual.tip).toBe(visual.color);
+  expect(visual.opacity).toBe('1');
+  expect(visual.shadow).toContain('drop-shadow');
+  expect(visual.pointerEvents).toBe('none');
+  if (visual.primary) {
+    expect(visual.color).not.toBe(visual.primary.background);
+    expect(visual.primary.contrast).toBeGreaterThan(3);
+    expect(visual.primary.shadow).toContain(visual.color);
+    const spread = parseFloat(
+      visual.primary.shadow.match(/[\d.]+px/g)!.slice(-1)[0]!,
+    );
+    expect(spread).toBeGreaterThanOrEqual(5);
+    expect(spread).toBeLessThanOrEqual(10);
+    expect(visual.primary.name).toBe(visual.reduced ? 'none' : 'action-pulse');
+  }
+  if (visual.reduced) {
+    expect(visual.name).toBe('none');
+  } else {
+    expect(visual.name).toBe('guide-nudge');
+    expect(visual.duration).toBeGreaterThanOrEqual(800);
+    expect(visual.duration).toBeLessThanOrEqual(1100);
+    expect(visual.easing).toBe('ease-in-out');
+    expect(visual.iterations).toBe('infinite');
+    const amplitude = Math.max(...visual.frames.map((frame) => frame.y));
+    expect(amplitude).toBeGreaterThanOrEqual(12);
+    expect(amplitude).toBeLessThanOrEqual(20);
+    expect(Math.min(...visual.frames.map((frame) => frame.y))).toBe(0);
+    const lower = visual.frames.find((frame) => frame.y === amplitude)!;
+    expect(lower.scale).toBeGreaterThan(1);
+    expect(lower.scale).toBeLessThanOrEqual(1.1);
+  }
+}
+
 async function checkScreen(page: Page, title: string) {
   await expect(
     page.getByRole('heading', { level: 1, name: title, exact: true }),
@@ -25,6 +118,7 @@ async function checkScreen(page: Page, title: string) {
   const guide = page.locator('.action-guide');
   await expect(guide).toHaveCount(1);
   await expect(guide).toBeVisible();
+  await checkGuideStyles(page);
   const targetId = await guide.getAttribute('data-guide-target');
   const target = page.locator(`#${targetId}`);
   await expect(target).toBeVisible();
@@ -253,7 +347,7 @@ test('три ответа различаются структурой, обра�
 test('reduced motion сохраняет статические указатели и полностью отключает анимации', async ({
   page,
   isMobile,
-}) => {
+}, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   async function checkStatic(title: string) {
     await checkScreen(page, title);
@@ -284,6 +378,12 @@ test('reduced motion сохраняет статические указател�
     expect(animated).toEqual([]);
   }
   await checkStatic('Логические последовательности 4–5');
+  const screenshot = testInfo.outputPath('09-reduced-motion.png');
+  await page.screenshot({ path: screenshot, fullPage: true });
+  await testInfo.attach('reduced-motion', {
+    path: screenshot,
+    contentType: 'image/png',
+  });
   await activate(page, 'Начать', isMobile);
   await checkStatic('Карта занятий');
   await activate(page, 'Начать демонстрационное занятие', isMobile);
@@ -348,4 +448,126 @@ test('успех, приоритет возврата на карту и скр�
   );
   await expect(home).toHaveClass(/guided-action/);
   await expect(repeat).not.toHaveClass(/guided-action/);
+});
+
+test('движется сама стрелка, кольцо меняет толщину, ответы равноправны', async ({
+  page,
+  isMobile,
+}, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await checkScreen(page, 'Логические последовательности 4–5');
+  const guide = page.locator('.action-guide');
+  const start = page.getByRole('button', { name: 'Начать', exact: true });
+  async function phase(time: number, name: string) {
+    await page
+      .locator('.action-guide, .guided-action')
+      .evaluateAll((elements, time) => {
+        for (const element of elements) {
+          const animation = element.getAnimations()[0];
+          if (!animation)
+            throw new Error('Expected CSS animation for guidance');
+          animation.pause();
+          animation.currentTime = time;
+        }
+      }, time);
+    const geometry = {
+      arrow: (await guide.boundingBox())!,
+      button: (await start.boundingBox())!,
+      transform: await guide.evaluate(
+        (element) => getComputedStyle(element).transform,
+      ),
+      ring: await start.evaluate(
+        (element) => getComputedStyle(element).boxShadow,
+      ),
+    };
+    const screenshot = testInfo.outputPath(`${name}.png`);
+    await page.screenshot({
+      path: screenshot,
+      fullPage: true,
+      animations: 'allow',
+    });
+    await testInfo.attach(name, { path: screenshot, contentType: 'image/png' });
+    return geometry;
+  }
+  const top = await phase(0, '07-welcome-motion-start');
+  const bottom = await phase(475, '08-welcome-motion-near');
+  const centerShift =
+    bottom.arrow.y +
+    bottom.arrow.height / 2 -
+    (top.arrow.y + top.arrow.height / 2);
+  expect(centerShift).toBeCloseTo(16, 1);
+  expect(bottom.arrow.width / top.arrow.width).toBeCloseTo(1.08, 2);
+  expect(bottom.arrow.height / top.arrow.height).toBeCloseTo(1.08, 2);
+  expect(bottom.button).toEqual(top.button);
+  expect(bottom.ring).not.toBe(top.ring);
+  expect(bottom.arrow.y + bottom.arrow.height).toBeLessThan(bottom.button.y);
+  await testInfo.attach('arrow-motion-measurements', {
+    body: JSON.stringify({ top, bottom, centerShift }, null, 2),
+    contentType: 'application/json',
+  });
+  await page
+    .locator('.action-guide, .guided-action')
+    .evaluateAll((elements) => {
+      for (const element of elements) {
+        const animation = element.getAnimations()[0];
+        if (!animation) throw new Error('Expected CSS animation for guidance');
+        animation.play();
+      }
+    });
+  await activate(page, 'Начать', isMobile);
+  await checkScreen(page, 'Карта занятий');
+  await activate(page, 'Начать демонстрационное занятие', isMobile);
+  await checkScreen(page, 'Найди такой же');
+  const answers = page.getByRole('group');
+  const appearances = await answers
+    .getByRole('button')
+    .evaluateAll((elements) =>
+      elements.map((element) => {
+        const style = getComputedStyle(element);
+        return {
+          background: style.backgroundColor,
+          shadow: style.boxShadow,
+          animation: style.animationName,
+          border: style.borderColor,
+        };
+      }),
+    );
+  expect(appearances).toHaveLength(3);
+  expect(appearances[1]).toEqual(appearances[0]);
+  expect(appearances[2]).toEqual(appearances[0]);
+  for (const name of [
+    'Синий круг без точки',
+    'Синий круг с жёлтым квадратом',
+  ]) {
+    await activate(page, name, isMobile);
+    await checkScreen(page, 'Попробуй ещё');
+    await expect(guide).toHaveAttribute('data-guide-target', 'answers');
+    const correct = page.getByRole('button', {
+      name: 'Синий круг с жёлтой точкой',
+      exact: true,
+    });
+    expect(
+      await correct.evaluate(
+        (element) => getComputedStyle(element).animationName,
+      ),
+    ).toBe('none');
+    expect(
+      await correct.evaluate((element) => getComputedStyle(element).boxShadow),
+    ).toBe('none');
+    const mistaken = page.getByRole('button', { name, exact: true });
+    expect(
+      await mistaken.evaluate(
+        (element) => getComputedStyle(element).borderStyle,
+      ),
+    ).toBe('dashed');
+    expect(
+      await mistaken
+        .locator('.composite')
+        .evaluate((element) => getComputedStyle(element).animationName),
+    ).toBe('mistake-shake');
+  }
+  await activate(page, 'Синий круг с жёлтой точкой', isMobile);
+  await checkScreen(page, 'Верно!');
+  await activate(page, 'Дальше', isMobile);
+  await checkScreen(page, 'Занятие завершено!');
 });
