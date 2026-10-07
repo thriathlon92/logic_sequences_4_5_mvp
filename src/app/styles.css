@@ -183,6 +183,7 @@ button:disabled {
   border-radius: 50%;
 }
 .matching {
+  position: relative;
   width: 100%;
   max-width: 464px;
   display: flex;
@@ -229,12 +230,12 @@ button:disabled {
   }
 }
 .mistaken {
-  border-style: dashed;
-  border-color: #805122;
+  border: 3px solid #b45d00;
+  box-shadow: 0 0 0 4px #ffb000;
   background: #fff6e8;
 }
-.mistaken > .composite {
-  animation: mistake-shake 350ms ease-in-out;
+.mistaken {
+  animation: mistake-shake 450ms ease-in-out;
 }
 @keyframes mistake-shake {
   0%,
@@ -253,14 +254,9 @@ button:disabled {
   padding: 8px;
 }
 .feedback {
-  min-height: 30px;
+  min-height: 120px;
+  width: 100%;
   font-size: 1.25rem;
-}
-.success {
-  padding: 24px;
-  border: 3px solid #315e4b;
-  border-radius: 20px;
-  font-size: 2rem;
 }
 .success-mark {
   display: block;
@@ -334,5 +330,159 @@ button:disabled {
   }
   .guided-action {
     box-shadow: 0 0 0 5px #ffb000;
+  }
+}
+
+.task-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.entering {
+  animation: task-appear 180ms ease-out both;
+}
+.entering .sample {
+  animation: sample-appear 240ms 100ms ease-out both;
+}
+.entering .answer {
+  animation: answer-appear 240ms ease-out both;
+}
+.entering .answer:nth-child(1) {
+  animation-delay: 240ms;
+}
+.entering .answer:nth-child(2) {
+  animation-delay: 350ms;
+}
+.entering .answer:nth-child(3) {
+  animation-delay: 460ms;
+}
+.entering .repeat-instruction {
+  animation: task-appear 100ms 700ms ease-out both;
+}
+@keyframes task-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes sample-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes answer-appear {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.pressed {
+  animation: choice-press 120ms ease-out;
+}
+@keyframes choice-press {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(0.95);
+  }
+}
+.won {
+  border-color: #315e4b;
+  box-shadow: 0 0 0 5px #315e4b;
+  transform: scale(1.1);
+  animation: choice-success 300ms ease-out both;
+  position: relative;
+  z-index: 1;
+}
+@keyframes choice-success {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.1);
+  }
+}
+.muted {
+  opacity: 0.35;
+}
+.completion-mark {
+  color: #315e4b;
+  font-size: 6rem;
+  line-height: 1;
+  animation: success-pop 300ms ease-out;
+}
+.celebration {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+}
+.particle {
+  position: absolute;
+  left: calc(50% - 6px);
+  top: 55%;
+  width: 12px;
+  height: 12px;
+  background: #ffb000;
+  opacity: 0;
+  animation: prize-burst 1000ms 100ms ease-out both;
+}
+.particle:nth-child(3n) {
+  border-radius: 50%;
+}
+.particle:nth-child(3n + 1) {
+  width: 6px;
+  height: 18px;
+}
+.particle:nth-child(5n + 1) {
+  background: #2356b0;
+}
+.particle:nth-child(5n + 2) {
+  background: #cf4266;
+}
+.particle:nth-child(5n + 3) {
+  background: #315e4b;
+}
+.particle:nth-child(5n + 4) {
+  background: #8a49ac;
+}
+@keyframes prize-burst {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0) scale(0.5);
+  }
+  12% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--x), var(--y)) rotate(var(--rotation)) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .won {
+    transform: none;
+  }
+  .celebration {
+    display: none;
   }
 }

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 type Screen = 'welcome' | 'map' | 'task' | 'incorrect' | 'correct' | 'complete';
-type WrongChoice = 'plain' | 'square';
+type Phase = 'idle' | 'entrance' | 'ready' | 'press' | 'error' | 'success';
+type Choice = 'copy' | 'plain' | 'square';
 
 const titles: Record<Screen, string> = {
   welcome: 'Логические последовательности 4–5',
@@ -11,47 +12,124 @@ const titles: Record<Screen, string> = {
   correct: 'Верно!',
   complete: 'Занятие завершено!',
 };
+// Fixed local burst: reproducible positions, rotations and shapes, no content engine.
+const particles = [
+  [-178, -105, -90],
+  [-138, -148, 120],
+  [-92, -164, -150],
+  [-44, -140, 100],
+  [12, -172, -120],
+  [65, -152, 160],
+  [116, -134, -80],
+  [174, -94, 140],
+  [186, -38, -130],
+  [151, 22, 110],
+  [110, 68, -170],
+  [58, 95, 130],
+  [5, 112, -100],
+  [-53, 94, 150],
+  [-108, 70, -140],
+  [-156, 30, 90],
+  [-185, -30, -160],
+  [-123, -70, 180],
+  [85, -72, -110],
+  [28, 52, 140],
+];
 
 export function App() {
   const [screen, setScreen] = useState<Screen>('welcome');
+  const [phase, setPhase] = useState<Phase>('idle');
   const [transitioning, setTransitioning] = useState(false);
+  const [selected, setSelected] = useState<Choice | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [instructionRepeated, setInstructionRepeated] = useState(false);
-  const [mistake, setMistake] = useState<{
-    choice: WrongChoice;
-    attempt: number;
-  } | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(
+    () =>
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+  );
   const transitionLock = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const instruction = useRef<HTMLParagraphElement>(null);
-  const choosing = screen === 'task' || screen === 'incorrect';
+  const inTask =
+    screen === 'task' || screen === 'incorrect' || screen === 'correct';
+  const answersLocked = phase !== 'ready';
+
+  useEffect(() => {
+    const media = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!media) return;
+    const update = () => setReducedMotion(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
 
   useEffect(() => {
     heading.current?.focus();
-    // A short input lock also catches two separate touch taps across screens.
-    const timer = window.setTimeout(() => {
-      transitionLock.current = false;
-      setTransitioning(false);
-    }, 500);
-    return () => window.clearTimeout(timer);
   }, [screen]);
 
-  function go(next: Screen) {
+  useEffect(() => {
+    let timer: number | undefined;
+    if (phase === 'idle' || phase === 'entrance' || phase === 'error') {
+      const delay =
+        phase === 'idle'
+          ? 500
+          : phase === 'error'
+            ? 450
+            : reducedMotion
+              ? 0
+              : 800;
+      timer = window.setTimeout(() => {
+        transitionLock.current = false;
+        setTransitioning(false);
+        if (phase !== 'idle') setPhase('ready');
+      }, delay);
+    } else if (phase === 'press') {
+      timer = window.setTimeout(
+        () => {
+          if (selected === 'copy') {
+            setScreen('correct');
+            setPhase('success');
+          } else {
+            setAttempt((value) => value + 1);
+            setScreen('incorrect');
+            setPhase('error');
+          }
+        },
+        reducedMotion ? 0 : 120,
+      );
+    } else if (phase === 'success') {
+      timer = window.setTimeout(
+        () => {
+          setScreen('complete');
+          setPhase('idle');
+          setTransitioning(true);
+        },
+        reducedMotion ? 400 : 1200,
+      );
+    }
+    return () => window.clearTimeout(timer);
+  }, [phase, screen, selected, reducedMotion]);
+
+  function go(next: 'map' | 'task') {
     if (transitionLock.current || next === screen) return;
-    transitionLock.current = true;
+    transitionLock.current = !reducedMotion || next !== 'task';
     setTransitioning(true);
     setInstructionRepeated(false);
-    setMistake(null);
+    setSelected(null);
+    setAttempt(0);
+    setPhase(next === 'task' ? (reducedMotion ? 'ready' : 'entrance') : 'idle');
     setScreen(next);
   }
 
-  function tryAgain(choice: WrongChoice) {
-    if (transitionLock.current) return;
-    // An error keeps the same choices available, including on repeated errors.
-    setMistake((previous) => ({
-      choice,
-      attempt: (previous?.attempt ?? 0) + 1,
-    }));
-    setScreen('incorrect');
+  function choose(choice: Choice) {
+    if (transitionLock.current || phase !== 'ready') return;
+    transitionLock.current = true;
+    setInstructionRepeated(false);
+    setSelected(choice);
+    setPhase('press');
+  }
+
+  function answerClass(choice: Choice) {
+    return `answer${selected === choice && phase === 'press' ? ' pressed' : ''}${selected === choice && phase === 'error' ? ' mistaken' : ''}${phase === 'success' ? (choice === 'copy' ? ' won' : ' muted') : ''}`;
   }
 
   return (
@@ -61,20 +139,18 @@ export function App() {
         if (event.detail > 1) event.stopPropagation();
       }}
       onKeyDownCapture={(event) => {
-        if (event.repeat && (event.key === 'Enter' || event.key === ' ')) {
+        if (event.repeat && (event.key === 'Enter' || event.key === ' '))
           event.preventDefault();
-        }
       }}
     >
       <section
         className="panel"
         aria-labelledby="screen-title"
-        key={choosing ? 'task' : screen}
+        key={inTask ? 'task' : screen}
       >
         <h1 id="screen-title" ref={heading} tabIndex={-1}>
           {titles[screen]}
         </h1>
-
         {screen === 'welcome' && (
           <>
             <div className="shapes" aria-hidden="true">
@@ -97,7 +173,6 @@ export function App() {
             </div>
           </>
         )}
-
         {screen === 'map' && (
           <div className="next-action lesson-route">
             <span
@@ -120,14 +195,16 @@ export function App() {
             </button>
           </div>
         )}
-
-        {choosing && (
-          <>
+        {inTask && (
+          <div
+            className={`task-content${phase === 'entrance' ? ' entering' : ''}`}
+            data-phase={phase}
+          >
             <p ref={instruction} tabIndex={-1} className="instruction">
               Посмотри на образец. Найди такой же.
             </p>
             <div
-              className={`matching${mistake || instructionRepeated ? ' highlighted' : ''}`}
+              className={`matching${instructionRepeated ? ' highlighted' : ''}`}
             >
               <div
                 className="sample"
@@ -138,66 +215,77 @@ export function App() {
                   <span className="inner dot" />
                 </span>
               </div>
-              <span
-                key={mistake?.attempt ?? 0}
-                className="action-guide"
-                data-guide-target="answers"
-                aria-hidden="true"
-              />
               <div
                 id="answers"
                 className="answers"
                 role="group"
                 aria-label="Выбери такую же фигуру"
+                aria-busy={answersLocked}
               >
                 <button
-                  className="answer"
+                  className={answerClass('copy')}
                   aria-label="Синий круг с жёлтой точкой"
-                  disabled={transitioning}
-                  onClick={() => go('correct')}
+                  disabled={answersLocked}
+                  onClick={() => choose('copy')}
                 >
                   <span className="composite circle" aria-hidden="true">
                     <span className="inner dot" />
                   </span>
                 </button>
                 <button
-                  className={`answer${mistake?.choice === 'plain' ? ' mistaken' : ''}`}
+                  className={answerClass('plain')}
                   aria-label="Синий круг без точки"
-                  disabled={transitioning}
-                  onClick={() => tryAgain('plain')}
+                  disabled={answersLocked}
+                  onClick={() => choose('plain')}
                 >
-                  <span
-                    key={
-                      mistake?.choice === 'plain' ? mistake.attempt : 'plain'
-                    }
-                    className="composite circle"
-                    aria-hidden="true"
-                  />
+                  <span className="composite circle" aria-hidden="true" />
                 </button>
                 <button
-                  className={`answer${mistake?.choice === 'square' ? ' mistaken' : ''}`}
+                  className={answerClass('square')}
                   aria-label="Синий круг с жёлтым квадратом"
-                  disabled={transitioning}
-                  onClick={() => tryAgain('square')}
+                  disabled={answersLocked}
+                  onClick={() => choose('square')}
                 >
-                  <span
-                    key={
-                      mistake?.choice === 'square' ? mistake.attempt : 'square'
-                    }
-                    className="composite circle"
-                    aria-hidden="true"
-                  >
+                  <span className="composite circle" aria-hidden="true">
                     <span className="inner square" />
                   </span>
                 </button>
               </div>
-            </div>
-            <div className="feedback" role="status">
-              {mistake ? `Попробуй ещё. Попытка ${mistake.attempt}.` : ''}
+              <div className="feedback" role="status">
+                {phase === 'success' ? (
+                  <>
+                    <span className="success-mark" aria-hidden="true">
+                      ✓
+                    </span>
+                    Получилось!
+                  </>
+                ) : attempt > 0 ? (
+                  `Попробуй ещё. Попытка ${attempt}.`
+                ) : (
+                  ''
+                )}
+              </div>
+              {phase === 'success' && !reducedMotion && (
+                <div className="celebration" aria-hidden="true">
+                  {particles.map(([x, y, rotation], index) => (
+                    <span
+                      key={index}
+                      className="particle"
+                      style={
+                        {
+                          '--x': `${x}px`,
+                          '--y': `${y}px`,
+                          '--rotation': `${rotation}deg`,
+                        } as CSSProperties
+                      }
+                    />
+                  ))}
+                </div>
+              )}
             </div>
             <button
-              className="secondary"
-              disabled={transitioning}
+              className="secondary repeat-instruction"
+              disabled={answersLocked}
               onClick={() => {
                 setInstructionRepeated(true);
                 instruction.current?.focus();
@@ -205,37 +293,13 @@ export function App() {
             >
               <span aria-hidden="true">↻</span> Повторить инструкцию
             </button>
-          </>
+          </div>
         )}
-
-        {screen === 'correct' && (
-          <>
-            <div className="success" role="status">
-              <span className="success-mark" aria-hidden="true">
-                ✓
-              </span>
-              Получилось!
-            </div>
-            <div className="next-action">
-              <span
-                className="action-guide"
-                data-guide-target="next"
-                aria-hidden="true"
-              />
-              <button
-                id="next"
-                className="primary guided-action"
-                disabled={transitioning}
-                onClick={() => go('complete')}
-              >
-                Дальше <span className="play-icon" aria-hidden="true" />
-              </button>
-            </div>
-          </>
-        )}
-
         {screen === 'complete' && (
           <>
+            <div className="completion-mark" aria-hidden="true">
+              ✓
+            </div>
             <p>Ты справился!</p>
             <div className="next-action">
               <span
