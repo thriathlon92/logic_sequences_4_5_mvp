@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import { timeline, timings } from './timings';
 
 const correct = 'Синий круг с жёлтой точкой';
 const wrong = 'Синий круг без точки';
@@ -13,15 +14,16 @@ const phase = () =>
   document.querySelector('.task-content')?.getAttribute('data-phase');
 function openTask(ready = true) {
   choose('Начать');
-  advance(500);
+  advance(timings.navigationLock);
   choose(lesson);
-  if (ready) advance(800);
+  if (ready) advance(timeline.entrance);
 }
 function complete() {
   choose(correct);
-  advance(120);
-  advance(1200);
-  advance(500);
+  advance(timings.choiceReaction);
+  advance(timeline.leave - timings.choiceReaction);
+  advance(timings.completeTransition / 2);
+  advance(timings.navigationLock);
 }
 function expectOptions(enabled: boolean) {
   const options = within(screen.getByRole('group')).getAllByRole('button');
@@ -46,6 +48,20 @@ afterEach(() => {
 });
 
 describe('Игровая петля W02', () => {
+  it('соблюдает наблюдаемый темп и общий бюджет анимаций', () => {
+    expect(timings.shell).toBeGreaterThanOrEqual(300);
+    expect(timings.shell).toBeLessThanOrEqual(400);
+    expect(timings.samplePart).toBeGreaterThanOrEqual(200);
+    expect(timings.samplePart).toBeLessThanOrEqual(250);
+    expect(timings.afterSample).toBe(400);
+    expect(timings.answers).toBeGreaterThanOrEqual(350);
+    expect(timings.answers).toBeLessThanOrEqual(450);
+    expect(timeline.entrance).toBeLessThanOrEqual(2500);
+    expect(timeline.completeVisible).toBeGreaterThanOrEqual(2700);
+    expect(timeline.completeVisible).toBeLessThanOrEqual(3000);
+    expect(timings.reducedSuccess).toBeGreaterThanOrEqual(1500);
+    expect(timings.reducedSuccess).toBeLessThanOrEqual(2000);
+  });
   it('приветствие предлагает одно доступное действие без ввода данных', () => {
     render(<App />);
     expect(screen.getByRole('heading')).toHaveFocus();
@@ -56,15 +72,15 @@ describe('Игровая петля W02', () => {
   it('оставляет единственную стрелку только на навигационных экранах', () => {
     render(<App />);
     choose('Начать');
-    advance(500);
+    advance(timings.navigationLock);
     expectGuide(lesson);
     choose(lesson);
-    advance(800);
+    advance(timeline.entrance);
     expect(document.querySelector('.action-guide')).toBeNull();
     complete();
     expectGuide('На карту');
     choose('На карту');
-    advance(500);
+    advance(timings.navigationLock);
     expectGuide(lesson);
   });
   it('начинает task в entrance-состоянии и блокирует все ответы', () => {
@@ -77,7 +93,7 @@ describe('Игровая петля W02', () => {
   it('открывает все три ответа одновременно после entrance', () => {
     render(<App />);
     openTask(false);
-    advance(799);
+    advance(timeline.entrance - 1);
     expectOptions(false);
     advance(1);
     expectOptions(true);
@@ -88,7 +104,7 @@ describe('Игровая петля W02', () => {
     openTask(false);
     choose(correct);
     choose(wrong);
-    advance(800);
+    advance(timeline.entrance);
     expect(phase()).toBe('ready');
     expect(screen.getByRole('heading')).toHaveTextContent('Найди такой же');
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
@@ -116,10 +132,10 @@ describe('Игровая петля W02', () => {
     openTask();
     choose(wrong);
     expect(phase()).toBe('press');
-    expect(button(wrong)).toHaveClass('pressed');
+    expect(button(wrong)).toHaveClass('mistaken');
     expectOptions(false);
     choose(correct);
-    advance(120);
+    advance(timings.choiceReaction);
     expect(phase()).toBe('error');
     expect(screen.getByRole('heading')).toHaveTextContent('Попробуй ещё');
   });
@@ -128,19 +144,19 @@ describe('Игровая петля W02', () => {
     openTask();
     const sample = screen.getByRole('img');
     choose(wrong);
-    advance(120);
+    advance(timings.choiceReaction);
     expect(button(wrong)).toHaveClass('mistaken');
     expect(button(correct)).toHaveClass('answer', { exact: true });
     expect(document.querySelector('.action-guide')).toBeNull();
     expect(screen.getByRole('img')).toBe(sample);
     expectOptions(false);
   });
-  it('снимает реакцию и открывает ответы через 570 мс от выбора', () => {
+  it('снимает реакцию и открывает ответы через 800 мс от выбора', () => {
     render(<App />);
     openTask();
     choose(wrong);
-    advance(120);
-    advance(449);
+    advance(timings.choiceReaction);
+    advance(timings.retry - timings.choiceReaction - 1);
     expectOptions(false);
     advance(1);
     expectOptions(true);
@@ -152,9 +168,9 @@ describe('Игровая петля W02', () => {
     openTask();
     for (const name of [wrong, wrong, otherWrong, otherWrong]) {
       choose(name);
-      advance(120);
+      advance(timings.choiceReaction);
       expect(button(name)).toHaveClass('mistaken');
-      advance(450);
+      advance(timings.retry - timings.choiceReaction);
       expectOptions(true);
     }
     expect(screen.getByRole('status')).toHaveTextContent(
@@ -165,7 +181,7 @@ describe('Игровая петля W02', () => {
     render(<App />);
     openTask();
     choose(correct);
-    advance(120);
+    advance(timings.choiceReaction);
     expect(phase()).toBe('success');
     expectOptions(false);
     expect(button(correct)).toHaveClass('won');
@@ -176,22 +192,29 @@ describe('Игровая петля W02', () => {
     render(<App />);
     openTask();
     choose(correct);
-    advance(120);
+    advance(timings.choiceReaction);
     const celebration = document.querySelector('.celebration');
     expect(celebration).toHaveAttribute('aria-hidden', 'true');
     expect(celebration?.querySelectorAll('.particle')).toHaveLength(20);
   });
-  it('не требует кнопки Дальше и автоматически завершает через 1320 мс после выбора', () => {
+  it('не требует кнопки Дальше и автоматически завершает после награды, выдержки и плавного перехода', () => {
     render(<App />);
     openTask();
     choose(correct);
-    advance(120);
+    advance(timings.choiceReaction);
     expect(
       screen.queryByRole('button', { name: 'Дальше' }),
     ).not.toBeInTheDocument();
     expect(document.querySelector('.action-guide')).toBeNull();
-    advance(1199);
+    advance(timings.confettiDelay + timings.confetti - timings.choiceReaction);
     expect(phase()).toBe('success');
+    advance(timings.resultHold - 1);
+    expect(phase()).toBe('success');
+    advance(1);
+    expect(phase()).toBe('leaving');
+    expectOptions(false);
+    advance(timings.completeTransition / 2 - 1);
+    expect(phase()).toBe('leaving');
     advance(1);
     expect(screen.getByRole('heading')).toHaveTextContent('Занятие завершено!');
   });
@@ -201,10 +224,11 @@ describe('Игровая петля W02', () => {
     choose(correct);
     choose(correct);
     fireEvent.click(button(correct), { detail: 2 });
-    advance(120);
+    advance(timings.choiceReaction);
     expect(vi.getTimerCount()).toBe(1);
-    advance(1200);
-    advance(500);
+    advance(timeline.leave - timings.choiceReaction);
+    advance(timings.completeTransition / 2);
+    advance(timings.navigationLock);
     expect(vi.getTimerCount()).toBe(0);
     choose('На карту');
     advance(10000);
@@ -214,15 +238,15 @@ describe('Игровая петля W02', () => {
     render(<App />);
     openTask();
     choose(wrong);
-    advance(120);
-    advance(450);
+    advance(timings.choiceReaction);
+    advance(timings.retry - timings.choiceReaction);
     complete();
     choose('Ещё раз');
     expect(phase()).toBe('entrance');
     expectOptions(false);
     expect(document.querySelector('.celebration')).toBeNull();
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
-    advance(800);
+    advance(timeline.entrance);
     expectOptions(true);
     for (const name of [correct, wrong, otherWrong])
       expect(button(name)).toHaveClass('answer', { exact: true });
@@ -238,7 +262,7 @@ describe('Игровая петля W02', () => {
     expect(document.querySelector('.action-guide')).toBeNull();
     expectOptions(true);
   });
-  it('reduced motion открывает задание сразу и завершает без частиц через 400 мс', () => {
+  it('reduced motion открывает задание сразу и завершает без частиц через 1750 мс', () => {
     vi.stubGlobal(
       'matchMedia',
       vi.fn(() => ({
@@ -256,7 +280,7 @@ describe('Игровая петля W02', () => {
     expect(phase()).toBe('success');
     expect(document.querySelector('.celebration')).toBeNull();
     expect(button(correct)).toHaveClass('won');
-    advance(399);
+    advance(timings.reducedSuccess - 1);
     expect(phase()).toBe('success');
     advance(1);
     expect(screen.getByRole('heading')).toHaveTextContent('Занятие завершено!');
@@ -277,20 +301,26 @@ describe('Игровая петля W02', () => {
       'Логические последовательности',
     );
   });
-  it.each(['idle', 'entrance', 'press', 'error', 'success'] as const)(
-    'очищает таймер %s при unmount',
-    (state) => {
-      const { unmount } = render(<App />);
-      if (state !== 'idle') openTask(state !== 'entrance');
-      if (state !== 'entrance' && state !== 'idle')
-        choose(state === 'success' ? correct : wrong);
-      if (state === 'error' || state === 'success') advance(120);
-      if (state !== 'idle') expect(phase()).toBe(state);
-      advance(0);
-      expect(vi.getTimerCount()).toBe(1);
-      unmount();
-      expect(vi.getTimerCount()).toBe(0);
-      advance(10000);
-    },
-  );
+  it.each([
+    'idle',
+    'entrance',
+    'press',
+    'error',
+    'success',
+    'leaving',
+  ] as const)('очищает таймер %s при unmount', (state) => {
+    const { unmount } = render(<App />);
+    if (state !== 'idle') openTask(state !== 'entrance');
+    if (state !== 'entrance' && state !== 'idle')
+      choose(state === 'success' || state === 'leaving' ? correct : wrong);
+    if (state === 'error' || state === 'success' || state === 'leaving')
+      advance(timings.choiceReaction);
+    if (state === 'leaving') advance(timeline.leave - timings.choiceReaction);
+    if (state !== 'idle') expect(phase()).toBe(state);
+    advance(0);
+    expect(vi.getTimerCount()).toBe(1);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    advance(10000);
+  });
 });

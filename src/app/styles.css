@@ -94,7 +94,7 @@ button:disabled {
   pointer-events: none;
   color: #ffb000;
   filter: drop-shadow(0 0 1px #523800) drop-shadow(0 2px 1px #523800);
-  animation: guide-nudge 950ms ease-in-out infinite;
+  animation: guide-nudge var(--time-guideCycle) ease-in-out infinite;
 }
 .action-guide::before {
   content: '';
@@ -117,7 +117,7 @@ button:disabled {
 }
 .guided-action {
   box-shadow: 0 0 0 5px #ffb000;
-  animation: action-pulse 950ms ease-in-out infinite;
+  animation: action-pulse var(--time-guideCycle) ease-in-out infinite;
 }
 @keyframes action-pulse {
   0%,
@@ -235,19 +235,21 @@ button:disabled {
   background: #fff6e8;
 }
 .mistaken {
-  animation: mistake-shake 450ms ease-in-out;
+  animation: mistake-shake var(--time-choiceReaction) ease-in-out;
 }
 @keyframes mistake-shake {
   0%,
   100% {
-    transform: translateX(0);
+    transform: translateX(0) scale(1);
   }
-  25%,
+  25% {
+    transform: translateX(-5px) scale(0.95);
+  }
   75% {
-    transform: translateX(-5px);
+    transform: translateX(-5px) scale(1);
   }
   50% {
-    transform: translateX(5px);
+    transform: translateX(5px) scale(1);
   }
 }
 .instruction {
@@ -263,7 +265,7 @@ button:disabled {
   color: #315e4b;
   font-size: 6rem;
   line-height: 1;
-  animation: success-pop 350ms ease-out;
+  animation: success-pop var(--time-choiceReaction) ease-out;
 }
 @keyframes success-pop {
   from {
@@ -340,26 +342,41 @@ button:disabled {
   align-items: center;
   gap: 20px;
 }
-.entering {
-  animation: task-appear 180ms ease-out both;
+.task-arriving {
+  animation: task-appear var(--time-shell) ease-out both;
 }
 .entering .sample {
-  animation: sample-appear 240ms 100ms ease-out both;
+  animation: sample-appear var(--time-samplePart) var(--at-sampleFrame) ease-out
+    both;
 }
-.entering .answer {
-  animation: answer-appear 240ms ease-out both;
+.entering .sample > .composite {
+  animation: task-appear var(--time-samplePart) var(--at-sampleCircle) ease-out
+    both;
 }
-.entering .answer:nth-child(1) {
-  animation-delay: 240ms;
+.entering .sample .inner {
+  animation: task-appear var(--time-samplePart) var(--at-sampleDot) ease-out
+    both;
 }
-.entering .answer:nth-child(2) {
-  animation-delay: 350ms;
-}
-.entering .answer:nth-child(3) {
-  animation-delay: 460ms;
+.entering .answers {
+  animation: answer-appear var(--time-answers) var(--at-answers) ease-out both;
 }
 .entering .repeat-instruction {
-  animation: task-appear 100ms 700ms ease-out both;
+  animation: task-appear var(--time-instruction) var(--at-instruction) ease-out
+    both;
+}
+.leaving {
+  animation: task-disappear var(--time-transitionHalf) ease-in both;
+}
+.complete-arriving {
+  animation: task-appear var(--time-transitionHalf) ease-out both;
+}
+@keyframes task-disappear {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 @keyframes task-appear {
   from {
@@ -389,29 +406,20 @@ button:disabled {
     transform: translateY(0);
   }
 }
-.pressed {
-  animation: choice-press 120ms ease-out;
-}
-@keyframes choice-press {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  35% {
-    transform: scale(0.95);
-  }
-}
 .won {
   border-color: #315e4b;
   box-shadow: 0 0 0 5px #315e4b;
   transform: scale(1.1);
-  animation: choice-success 300ms ease-out both;
+  animation: choice-success var(--time-choiceReaction) ease-out both;
   position: relative;
   z-index: 1;
 }
 @keyframes choice-success {
   from {
     transform: scale(1);
+  }
+  35% {
+    transform: scale(0.95);
   }
   to {
     transform: scale(1.1);
@@ -424,7 +432,7 @@ button:disabled {
   color: #315e4b;
   font-size: 6rem;
   line-height: 1;
-  animation: success-pop 300ms ease-out;
+  animation: success-pop var(--time-choiceReaction) ease-out;
 }
 .celebration {
   position: absolute;
@@ -441,7 +449,8 @@ button:disabled {
   height: 12px;
   background: #ffb000;
   opacity: 0;
-  animation: prize-burst 1000ms 100ms ease-out both;
+  animation: prize-burst var(--time-confetti) var(--time-confettiDelay) ease-out
+    both;
 }
 .particle:nth-child(3n) {
   border-radius: 50%;

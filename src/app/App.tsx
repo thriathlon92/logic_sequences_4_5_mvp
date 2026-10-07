@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
+import { timeline, timings, timingStyles } from './timings';
+
 type Screen = 'welcome' | 'map' | 'task' | 'incorrect' | 'correct' | 'complete';
-type Phase = 'idle' | 'entrance' | 'ready' | 'press' | 'error' | 'success';
+type Phase =
+  'idle' | 'entrance' | 'ready' | 'press' | 'error' | 'success' | 'leaving';
 type Choice = 'copy' | 'plain' | 'square';
 
 const titles: Record<Screen, string> = {
@@ -71,12 +74,12 @@ export function App() {
     if (phase === 'idle' || phase === 'entrance' || phase === 'error') {
       const delay =
         phase === 'idle'
-          ? 500
+          ? timings.navigationLock
           : phase === 'error'
-            ? 450
+            ? timings.retry - (reducedMotion ? 0 : timings.choiceReaction)
             : reducedMotion
               ? 0
-              : 800;
+              : timeline.entrance;
       timer = window.setTimeout(() => {
         transitionLock.current = false;
         setTransitioning(false);
@@ -86,24 +89,35 @@ export function App() {
       timer = window.setTimeout(
         () => {
           if (selected === 'copy') {
-            setScreen('correct');
             setPhase('success');
           } else {
             setAttempt((value) => value + 1);
-            setScreen('incorrect');
             setPhase('error');
           }
         },
-        reducedMotion ? 0 : 120,
+        reducedMotion ? 0 : timings.choiceReaction,
       );
     } else if (phase === 'success') {
+      timer = window.setTimeout(
+        () => {
+          if (reducedMotion) {
+            setScreen('complete');
+            setPhase('idle');
+            setTransitioning(true);
+          } else setPhase('leaving');
+        },
+        reducedMotion
+          ? timings.reducedSuccess
+          : timeline.leave - timings.choiceReaction,
+      );
+    } else if (phase === 'leaving') {
       timer = window.setTimeout(
         () => {
           setScreen('complete');
           setPhase('idle');
           setTransitioning(true);
         },
-        reducedMotion ? 400 : 1200,
+        reducedMotion ? 0 : timings.completeTransition / 2,
       );
     }
     return () => window.clearTimeout(timer);
@@ -125,16 +139,24 @@ export function App() {
     transitionLock.current = true;
     setInstructionRepeated(false);
     setSelected(choice);
+    setScreen(choice === 'copy' ? 'correct' : 'incorrect');
     setPhase('press');
   }
 
+  const celebrating =
+    selected === 'copy' && ['press', 'success', 'leaving'].includes(phase);
   function answerClass(choice: Choice) {
-    return `answer${selected === choice && phase === 'press' ? ' pressed' : ''}${selected === choice && phase === 'error' ? ' mistaken' : ''}${phase === 'success' ? (choice === 'copy' ? ' won' : ' muted') : ''}`;
+    const mistaken =
+      selected === choice &&
+      choice !== 'copy' &&
+      (phase === 'press' || phase === 'error');
+    return `answer${mistaken ? ' mistaken' : ''}${celebrating ? (choice === 'copy' ? ' won' : ' muted') : ''}`;
   }
 
   return (
     <main
       className="shell"
+      style={timingStyles}
       onClickCapture={(event) => {
         if (event.detail > 1) event.stopPropagation();
       }}
@@ -144,7 +166,7 @@ export function App() {
       }}
     >
       <section
-        className="panel"
+        className={`panel${phase === 'entrance' ? ' task-arriving' : phase === 'leaving' ? ' leaving' : screen === 'complete' ? ' complete-arriving' : ''}`}
         aria-labelledby="screen-title"
         key={inTask ? 'task' : screen}
       >
@@ -252,7 +274,7 @@ export function App() {
                 </button>
               </div>
               <div className="feedback" role="status">
-                {phase === 'success' ? (
+                {celebrating ? (
                   <>
                     <span className="success-mark" aria-hidden="true">
                       ✓
@@ -265,7 +287,7 @@ export function App() {
                   ''
                 )}
               </div>
-              {phase === 'success' && !reducedMotion && (
+              {celebrating && !reducedMotion && (
                 <div className="celebration" aria-hidden="true">
                   {particles.map(([x, y, rotation], index) => (
                     <span

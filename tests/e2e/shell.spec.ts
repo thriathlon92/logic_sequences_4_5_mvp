@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { timeline, timings } from '../../src/app/timings';
 
 const browserMessages = new WeakMap<Page, string[]>();
 
@@ -190,7 +191,7 @@ async function frozen(page: Page) {
 async function frozenTask(page: Page, touch: boolean) {
   await frozen(page);
   await activate(page, 'Начать', touch);
-  await page.clock.runFor(500);
+  await page.clock.runFor(timings.navigationLock);
   await activate(page, lesson, touch);
 }
 async function animationPhase(page: Page, time: number, particleTime = time) {
@@ -242,7 +243,9 @@ test('entrance собирает образец и варианты послед�
   await frozenTask(page, isMobile);
   await expect(task(page)).toHaveAttribute('data-phase', 'entrance');
   const styles = await page
-    .locator('.sample, .answer, .repeat-instruction')
+    .locator(
+      '.sample, .sample > .composite, .sample .inner, .answers, .repeat-instruction',
+    )
     .evaluateAll((elements) =>
       elements.map((element) => {
         const style = getComputedStyle(element);
@@ -264,20 +267,40 @@ test('entrance собирает образец и варианты послед�
     );
   expect(styles.map((style) => style.name)).toEqual([
     'sample-appear',
-    'answer-appear',
-    'answer-appear',
+    'task-appear',
+    'task-appear',
     'answer-appear',
     'task-appear',
   ]);
-  expect(styles.map((style) => style.delay)).toEqual([100, 240, 350, 460, 700]);
+  expect(styles.map((style) => style.delay)).toEqual([
+    timeline.sampleFrame,
+    timeline.sampleCircle,
+    timeline.sampleDot,
+    timeline.answers,
+    timeline.instruction,
+  ]);
   expect(
     styles.every(
       (style) =>
-        style.easing === 'ease-out' && style.delay + style.duration <= 800,
+        style.easing === 'ease-out' &&
+        style.delay + style.duration <= timeline.entrance,
     ),
   ).toBe(true);
+  await expect(page.locator('.task-arriving')).toHaveCSS(
+    'animation-duration',
+    '0.35s',
+  );
+  expect(styles[1]!.delay - styles[0]!.delay).toBe(225);
+  expect(styles[2]!.delay - styles[1]!.delay).toBe(225);
+  expect(styles[3]!.delay - (styles[2]!.delay + styles[2]!.duration)).toBe(400);
+  expect(styles[3]!.duration).toBe(400);
   expect(styles[0]!.frames[0]!.transform).toBe('scale(0.85)');
-  expect(styles[1]!.frames[0]!.transform).toBe('translateY(16px)');
+  expect(styles[3]!.frames[0]!.transform).toBe('translateY(16px)');
+  await animationPhase(page, timeline.answers - 1);
+  await expect(page.locator('.sample .inner')).toHaveCSS('opacity', '1');
+  await expect(page.locator('.answers')).toHaveCSS('opacity', '0');
+  await animationPhase(page, timeline.answers + timings.answers);
+  await expect(page.locator('.answers')).toHaveCSS('opacity', '1');
   await expect(page.locator('.answer')).toHaveCount(3);
   for (const answer of await page.locator('.answer').all())
     await expect(answer).toBeDisabled();
@@ -287,7 +310,7 @@ test('entrance собирает образец и варианты послед�
   if (isMobile)
     await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   else await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await page.clock.runFor(799);
+  await page.clock.runFor(timeline.entrance - 1);
   await expect(task(page)).toHaveAttribute('data-phase', 'entrance');
   await page.clock.runFor(1);
   await ready(page);
@@ -314,7 +337,7 @@ test('повторные ошибки дают краткую реакцию б�
   isMobile,
 }) => {
   await frozenTask(page, isMobile);
-  await page.clock.runFor(800);
+  await page.clock.runFor(timeline.entrance);
   await ready(page);
   await page
     .locator('.sample')
@@ -322,11 +345,15 @@ test('повторные ошибки дают краткую реакцию б�
   for (const name of [wrong, wrong, 'Синий круг с жёлтым квадратом']) {
     await activate(page, name, isMobile);
     await expect(task(page)).toHaveAttribute('data-phase', 'press');
-    await expect(page.locator('.pressed')).toHaveCSS(
+    await expect(page.locator('.mistaken')).toHaveCSS(
       'animation-name',
-      'choice-press',
+      'mistake-shake',
     );
-    await page.clock.runFor(120);
+    await expect(page.locator('.mistaken')).toHaveCSS(
+      'animation-duration',
+      '0.45s',
+    );
+    await page.clock.runFor(timings.choiceReaction);
     await expect(task(page)).toHaveAttribute('data-phase', 'error');
     await checkScreen(page, 'Попробуй ещё');
     await expect(page.locator('.mistaken')).toHaveCSS(
@@ -350,7 +377,7 @@ test('повторные ошибки дают краткую реакцию б�
     await expect(page.locator('.answer')).toHaveCount(3);
     for (const answer of await page.locator('.answer').all())
       await expect(answer).toBeDisabled();
-    await page.clock.runFor(449);
+    await page.clock.runFor(timings.retry - timings.choiceReaction - 1);
     await expect(correctAnswer).toBeDisabled();
     await page.clock.runFor(1);
     await ready(page);
@@ -370,7 +397,7 @@ test('успех награждает и переходит один раз, д�
   isMobile,
 }) => {
   await frozenTask(page, isMobile);
-  await page.clock.runFor(800);
+  await page.clock.runFor(timeline.entrance);
   await ready(page);
   const answer = page.getByRole('button', { name: correct, exact: true });
   const box = (await answer.boundingBox())!;
@@ -379,7 +406,7 @@ test('успех награждает и переходит один раз, д�
     await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   } else await answer.dblclick();
   await expect(task(page)).toHaveAttribute('data-phase', 'press');
-  await page.clock.runFor(120);
+  await page.clock.runFor(timings.choiceReaction);
   await checkScreen(page, 'Верно!');
   await expect(task(page)).toHaveAttribute('data-phase', 'success');
   await expect(page.locator('.won')).toHaveCSS(
@@ -406,12 +433,49 @@ test('успех награждает и переходит один раз, д�
     'animation-name',
     'prize-burst',
   );
+  await expect(page.locator('.particle').first()).toHaveCSS(
+    'animation-delay',
+    '0.275s',
+  );
+  await expect(page.locator('.particle').first()).toHaveCSS(
+    'animation-duration',
+    '1.8s',
+  );
+  await expect(page.locator('.won')).toHaveCSS('animation-duration', '0.45s');
+  const scales = await page.locator('.won').evaluate((element) => {
+    const effect = element.getAnimations()[0]?.effect;
+    return effect instanceof KeyframeEffect
+      ? effect
+          .getKeyframes()
+          .map((frame) => new DOMMatrix(String(frame.transform)).m11)
+      : [];
+  });
+  expect(Math.min(...scales)).toBeCloseTo(0.95, 5);
+  expect(Math.max(...scales)).toBeCloseTo(1.1, 5);
   await expect(page.getByRole('button', { name: 'Дальше' })).toHaveCount(0);
-  await page.clock.runFor(1199);
+  await page.clock.runFor(
+    timings.confettiDelay + timings.confetti - timings.choiceReaction,
+  );
+  await expect(task(page)).toHaveAttribute('data-phase', 'success');
+  await page.clock.runFor(timings.resultHold - 1);
   await expect(task(page)).toHaveAttribute('data-phase', 'success');
   await page.clock.runFor(1);
+  await expect(task(page)).toHaveAttribute('data-phase', 'leaving');
+  await expect(page.locator('.leaving')).toHaveCSS(
+    'animation-name',
+    'task-disappear',
+  );
+  await expect(page.locator('.leaving')).toHaveCSS(
+    'animation-duration',
+    '0.2s',
+  );
+  await page.clock.runFor(timings.completeTransition / 2);
   await checkScreen(page, 'Занятие завершено!');
-  await page.clock.runFor(500);
+  await expect(page.locator('.complete-arriving')).toHaveCSS(
+    'animation-duration',
+    '0.2s',
+  );
+  await page.clock.runFor(timings.navigationLock);
   await activate(page, 'На карту', isMobile);
   await page.clock.runFor(10000);
   await checkScreen(page, 'Карта занятий');
@@ -548,7 +612,7 @@ test('reduced motion исключает движение и частицы, ос
     path: screenshot,
     contentType: 'image/png',
   });
-  await page.clock.runFor(399);
+  await page.clock.runFor(timings.reducedSuccess - 1);
   await expect(task(page)).toHaveAttribute('data-phase', 'success');
   await page.clock.runFor(1);
   await checkScreen(page, 'Занятие завершено!');
@@ -560,7 +624,7 @@ test('reduced motion исключает движение и частицы, ос
     'color',
     'rgb(255, 176, 0)',
   );
-  await page.clock.runFor(500);
+  await page.clock.runFor(timings.navigationLock);
   await activate(page, 'Ещё раз', isMobile);
   await ready(page);
   await expect(task(page)).not.toHaveClass(/entering/);
@@ -580,24 +644,24 @@ test('визуальные доказательства entrance, ошибки, 
     await testInfo.attach(name, { path: screenshot, contentType: 'image/png' });
   }
   await frozenTask(page, isMobile);
-  await animationPhase(page, 280);
+  await animationPhase(page, timeline.sampleDot - 25);
   await capture('01-task-entrance');
-  await page.clock.runFor(800);
+  await page.clock.runFor(timeline.entrance);
   await ready(page);
   await checkScreen(page, 'Найди такой же');
   await capture('02-task-ready');
   await activate(page, wrong, isMobile);
-  await page.clock.runFor(120);
+  await page.clock.runFor(timings.choiceReaction);
   await animationPhase(page, 225);
   await capture('03-incorrect');
   await checkScreen(page, 'Попробуй ещё');
-  await page.clock.runFor(450);
+  await page.clock.runFor(timings.retry - timings.choiceReaction);
   await activate(page, correct, isMobile);
-  await page.clock.runFor(120);
-  await animationPhase(page, 300, 0);
+  await page.clock.runFor(timings.choiceReaction);
+  await animationPhase(page, timings.choiceReaction, 0);
   await capture('04-success-before-confetti');
   const before = await page.locator('.matching').boundingBox();
-  await animationPhase(page, 500);
+  await animationPhase(page, timings.confettiDelay + timings.confetti / 2);
   await capture('05-celebration');
   expect(await page.locator('.matching').boundingBox()).toEqual(before);
   const colors = await page
@@ -608,7 +672,8 @@ test('визуальные доказательства entrance, ошибки, 
       ),
     ]);
   expect(colors).toHaveLength(5);
-  await page.clock.runFor(1200);
+  await page.clock.runFor(timeline.leave - timings.choiceReaction);
+  await page.clock.runFor(timings.completeTransition / 2);
   await animationPhase(page, 475);
   await capture('06-complete');
   await checkScreen(page, 'Занятие завершено!');
@@ -624,13 +689,13 @@ test('визуальные доказательства entrance, ошибки, 
   expect(homeBox.y).toBeLessThan(repeatBox.y);
   await expect(home).toHaveClass(/guided-action/);
   await expect(repeat).not.toHaveClass(/guided-action/);
-  await page.clock.runFor(500);
+  await page.clock.runFor(timings.navigationLock);
   await activate(page, 'Ещё раз', isMobile);
   await expect(task(page)).toHaveAttribute('data-phase', 'entrance');
   await expect(
     page.locator('.celebration, .mistaken, .won, .muted'),
   ).toHaveCount(0);
-  await page.clock.runFor(800);
+  await page.clock.runFor(timeline.entrance);
   await ready(page);
 });
 test('движется навигационная стрелка, кольцо меняет толщину', async ({
