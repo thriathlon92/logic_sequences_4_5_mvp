@@ -412,8 +412,16 @@ browser console. Проверяются Chromium, Desktop WebKit и iPad Mini We
 
 ### GitHub Actions второй корректировки
 
-Коммит и push выполняются после полного локального check.
-Результат CI будет подтверждён для отправленного SHA.
+Коммит реализации второй визуальной корректировки
+`639fb1ee45cb5aa829c61a483c943bc7150f7964` отправлен в `origin/main`.
+GitHub Actions: [run 37580667952](https://github.com/thriathlon92/logic_sequences_4_5_mvp/actions/runs/37580667952).
+Итог — **SUCCESS**; SHA и результат подтверждены через GitHub API.
+Workflow на Ubuntu выполнил frozen install, установку Chromium/WebKit и полный
+`corepack pnpm check`. Результат записан в отчёт отдельным документационным
+коммитом после завершения CI реализации. Status: `READY_FOR_REVIEW`.
+
+Внешние действия: чтение удалённого HEAD, git push и read-only проверка
+GitHub Actions через GitHub API. Публичный preview не создавался.
 
 ### Границы и приёмка
 
