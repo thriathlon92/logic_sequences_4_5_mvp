@@ -868,6 +868,21 @@ warnings относятся к окружению Node, а не к браузе�
 - `docs/product-spec.md`, `docs/stage-reports/W02-report.md`, `README.md` — решение G2, поведение и результаты.
 - `docs/research/screenshots/W02-persik/{chromium,webkit,tablet-webkit}-*.png` — 21 скриншот, по семь в проекте.
 
+### Commit и GitHub Actions
+
+Коммит реализации `b41679d47fa6e71735ed9638865e2fa76b7cdc68` отправлен
+в `origin/main` только после полного локального PASS.
+GitHub Actions [run 37818388845](https://github.com/thriathlon92/logic_sequences_4_5_mvp/actions/runs/37818388845)
+— **SUCCESS**. SHA, статус `completed` и результат `success` подтверждены
+через GitHub API. Workflow на Ubuntu выполнил frozen install, установку
+Chromium/WebKit с системными пакетами и полный `corepack pnpm check`.
+
+Эта запись внесена отдельным документационным коммитом после успешного CI;
+проверка форматирования документа выполнена перед его commit/push.
+Внешние действия ограничены git push и read-only проверкой GitHub Actions.
+Публичный preview не создавался. Автоматический PASS не меняет статус W02:
+`CHANGES_REQUESTED` до ручной проверки и повторного наблюдения на ребёнке.
+
 ### Ограничения и повторная приёмка
 
 Указание лапой и поддержка после ошибки требуют повторного наблюдения на
