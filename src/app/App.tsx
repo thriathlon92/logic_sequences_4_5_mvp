@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import { timeline, timings, timingStyles } from './timings';
+import { Persik, type PersikState } from './Persik';
 
 type Screen = 'welcome' | 'map' | 'task' | 'incorrect' | 'correct' | 'complete';
 type Phase =
@@ -145,6 +146,11 @@ export function App() {
 
   const celebrating =
     selected === 'copy' && ['press', 'success', 'leaving'].includes(phase);
+  const persikState: PersikState = celebrating
+    ? 'celebrate'
+    : phase === 'press' || phase === 'error'
+      ? 'encourage'
+      : 'idle';
   function answerClass(choice: Choice) {
     const mistaken =
       selected === choice &&
@@ -170,9 +176,16 @@ export function App() {
         aria-labelledby="screen-title"
         key={inTask ? 'task' : screen}
       >
-        <h1 id="screen-title" ref={heading} tabIndex={-1}>
-          {titles[screen]}
-        </h1>
+        <div className={inTask ? 'task-heading' : 'screen-heading'}>
+          {inTask && (
+            <div className="task-companion">
+              <Persik state={persikState} />
+            </div>
+          )}
+          <h1 id="screen-title" ref={heading} tabIndex={-1}>
+            {titles[screen]}
+          </h1>
+        </div>
         {screen === 'welcome' && (
           <>
             <div className="shapes" aria-hidden="true">
@@ -180,11 +193,7 @@ export function App() {
               <span className="shape square" />
             </div>
             <div className="next-action">
-              <span
-                className="action-guide"
-                data-guide-target="start"
-                aria-hidden="true"
-              />
+              <Persik state="guide" direction="right" />
               <button
                 id="start"
                 className="primary guided-action"
@@ -197,11 +206,7 @@ export function App() {
         )}
         {screen === 'map' && (
           <div className="next-action lesson-route">
-            <span
-              className="action-guide"
-              data-guide-target="lesson"
-              aria-hidden="true"
-            />
+            <Persik state="guide" direction="right" />
             <button
               id="lesson"
               className="primary lesson guided-action"
@@ -324,11 +329,7 @@ export function App() {
             </div>
             <p>Ты справился!</p>
             <div className="next-action">
-              <span
-                className="action-guide"
-                data-guide-target="home"
-                aria-hidden="true"
-              />
+              <Persik state="guide" direction="right" />
               <button
                 id="home"
                 className="primary guided-action home-action"

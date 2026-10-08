@@ -19,96 +19,35 @@ test.afterEach(async ({ page }) => {
   expect(browserMessages.get(page)).toEqual([]);
 });
 
-async function checkGuideStyles(page: Page) {
-  const visual = await page.locator('.action-guide').evaluate((element) => {
-    const style = getComputedStyle(element);
-    const target = document.getElementById(
-      element.getAttribute('data-guide-target')!,
-    );
-    const primary =
-      target?.tagName === 'BUTTON' ? getComputedStyle(target) : null;
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const animation = element.getAnimations()[0];
-    const frames =
-      animation?.effect instanceof KeyframeEffect
-        ? animation.effect.getKeyframes().map((frame) => {
-            const matrix = new DOMMatrix(String(frame.transform));
-            return { y: matrix.m42, scale: matrix.m11 };
-          })
-        : [];
-    function contrast(first: string, second: string) {
-      function luminance(color: string) {
-        const channels = color
-          .match(/[\d.]+/g)!
-          .slice(0, 3)
-          .map(Number)
-          .map((channel) => channel / 255)
-          .map((channel) =>
-            channel <= 0.04045
-              ? channel / 12.92
-              : ((channel + 0.055) / 1.055) ** 2.4,
-          );
-        return (
-          channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722
-        );
-      }
-      const a = luminance(first);
-      const b = luminance(second);
-      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-    }
-    return {
-      reduced,
-      color: style.color,
-      shaft: getComputedStyle(element, '::before').backgroundColor,
-      tip: getComputedStyle(element, '::after').borderTopColor,
-      shadow: style.filter,
-      opacity: style.opacity,
-      pointerEvents: style.pointerEvents,
-      name: style.animationName,
-      duration: parseFloat(style.animationDuration) * 1000,
-      easing: style.animationTimingFunction,
-      iterations: style.animationIterationCount,
-      frames,
-      primary: primary && {
-        background: primary.backgroundColor,
-        shadow: primary.boxShadow,
-        name: primary.animationName,
-        contrast: contrast(style.color, primary.backgroundColor),
-      },
-    };
-  });
-  expect(visual.color).toBe('rgb(255, 176, 0)');
-  expect(visual.shaft).toBe(visual.color);
-  expect(visual.tip).toBe(visual.color);
-  expect(visual.opacity).toBe('1');
-  expect(visual.shadow).toContain('drop-shadow');
-  expect(visual.pointerEvents).toBe('none');
-  if (visual.primary) {
-    expect(visual.color).not.toBe(visual.primary.background);
-    expect(visual.primary.contrast).toBeGreaterThan(3);
-    expect(visual.primary.shadow).toContain(visual.color);
-    const spread = parseFloat(
-      visual.primary.shadow.match(/[\d.]+px/g)!.slice(-1)[0]!,
-    );
-    expect(spread).toBeGreaterThanOrEqual(5);
-    expect(spread).toBeLessThanOrEqual(10);
-    expect(visual.primary.name).toBe(visual.reduced ? 'none' : 'action-pulse');
-  }
-  if (visual.reduced) {
-    expect(visual.name).toBe('none');
-  } else {
-    expect(visual.name).toBe('guide-nudge');
-    expect(visual.duration).toBeGreaterThanOrEqual(800);
-    expect(visual.duration).toBeLessThanOrEqual(1100);
-    expect(visual.easing).toBe('ease-in-out');
-    expect(visual.iterations).toBe('infinite');
-    const amplitude = Math.max(...visual.frames.map((frame) => frame.y));
-    expect(amplitude).toBeGreaterThanOrEqual(12);
-    expect(amplitude).toBeLessThanOrEqual(20);
-    expect(Math.min(...visual.frames.map((frame) => frame.y))).toBe(0);
-    const lower = visual.frames.find((frame) => frame.y === amplitude)!;
-    expect(lower.scale).toBeGreaterThan(1);
-    expect(lower.scale).toBeLessThanOrEqual(1.1);
+async function checkPersikGeometry(page: Page) {
+  const cat = page.locator('.persik img');
+  await expect(cat).toBeVisible();
+  await expect(cat).toHaveAttribute('alt', '');
+  await expect(page.locator('.persik')).toHaveAttribute('aria-hidden', 'true');
+  const dimensions = await cat.evaluate((image: HTMLImageElement) => ({
+    loaded: image.complete,
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+  }));
+  expect(dimensions).toEqual({ loaded: true, width: 512, height: 724 });
+  await expect(cat).toHaveCSS('pointer-events', 'none');
+  const catBox = (await cat.boundingBox())!;
+  // Both dimensions stay below the source size, even on a 2x display.
+  expect(catBox.width * 2).toBeLessThan(512);
+  expect(catBox.height * 2).toBeLessThan(724);
+  for (const element of await page
+    .locator('button, h1, .instruction, .sample, .answers, .celebration')
+    .all()) {
+    const box = (await element.boundingBox())!;
+    const overlaps =
+      catBox.x < box.x + box.width &&
+      catBox.x + catBox.width > box.x &&
+      catBox.y < box.y + box.height &&
+      catBox.y + catBox.height > box.y;
+    expect(
+      overlaps,
+      `Persik overlaps ${await element.getAttribute('class')}`,
+    ).toBe(false);
   }
 }
 
@@ -116,37 +55,42 @@ async function checkScreen(page: Page, title: string) {
   await expect(
     page.getByRole('heading', { level: 1, name: title, exact: true }),
   ).toBeVisible();
-  const guide = page.locator('.action-guide');
   const navigation = [
     'Логические последовательности 4–5',
     'Карта занятий',
     'Занятие завершено!',
   ].includes(title);
+  await expect(page.locator('.action-guide')).toHaveCount(0);
+  await expect(page.locator('.persik')).toHaveCount(1);
   if (navigation) {
+    const guide = page.locator('.persik-guide');
     await expect(guide).toHaveCount(1);
-    await expect(guide).toBeVisible();
-    await checkGuideStyles(page);
-    const targetId = await guide.getAttribute('data-guide-target');
-    const target = page.locator(`#${targetId}`);
+    await expect(guide).toHaveAttribute('data-direction', 'right');
+    const target = page.locator('.next-action > button');
     await expect(target).toBeVisible();
-    if (await target.evaluate((element) => element.tagName === 'BUTTON')) {
-      await expect(target).toHaveAccessibleName(/.+/);
-      await expect(page.locator('.guided-action')).toHaveCount(1);
-    } else {
-      await expect(target).toHaveRole('group');
-      await expect(page.locator('.guided-action')).toHaveCount(0);
-    }
-    const arrowBox = (await guide.boundingBox())!;
+    await expect(target).toHaveAccessibleName(/.+/);
+    await expect(page.locator('.guided-action')).toHaveCount(1);
+    const catBox = (await guide.boundingBox())!;
     const targetBox = (await target.boundingBox())!;
-    expect(arrowBox.y + arrowBox.height).toBeLessThanOrEqual(targetBox.y + 6);
-    expect(arrowBox.x + arrowBox.width / 2).toBeGreaterThan(targetBox.x);
-    expect(arrowBox.x + arrowBox.width / 2).toBeLessThan(
-      targetBox.x + targetBox.width,
+    // The approved paw points right, at about 44% of the image height.
+    const pawY = catBox.y + catBox.height * 0.44;
+    expect(catBox.x + catBox.width).toBeLessThan(targetBox.x);
+    expect(pawY).toBeGreaterThan(targetBox.y);
+    expect(pawY).toBeLessThan(targetBox.y + targetBox.height);
+    const reduced = await page.evaluate(
+      () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+    );
+    await expect(guide.locator('img')).toHaveCSS(
+      'animation-name',
+      reduced ? 'none' : 'persik-guide',
     );
   } else {
-    await expect(guide).toHaveCount(0);
+    await expect(
+      page.locator('.persik-guide, .persik[data-direction]'),
+    ).toHaveCount(0);
     await expect(page.locator('.guided-action')).toHaveCount(0);
   }
+  await checkPersikGeometry(page);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -389,7 +333,7 @@ test('повторные ошибки дают краткую реакцию б�
     page.getByText('Посмотри на образец. Найди такой же.'),
   ).toBeFocused();
   await expect(page.locator('.matching')).toHaveClass(/highlighted/);
-  await expect(page.locator('audio, video, img, canvas')).toHaveCount(0);
+  await expect(page.locator('audio, video, canvas')).toHaveCount(0);
 });
 
 test('успех награждает и переходит один раз, двойной ввод не пропускает состояния', async ({
@@ -616,13 +560,9 @@ test('reduced motion исключает движение и частицы, ос
   await expect(task(page)).toHaveAttribute('data-phase', 'success');
   await page.clock.runFor(1);
   await checkScreen(page, 'Занятие завершено!');
-  await expect(page.locator('.action-guide')).toHaveCSS(
+  await expect(page.locator('.persik-guide img')).toHaveCSS(
     'animation-name',
     'none',
-  );
-  await expect(page.locator('.action-guide')).toHaveCSS(
-    'color',
-    'rgb(255, 176, 0)',
   );
   await page.clock.runFor(timings.navigationLock);
   await activate(page, 'Ещё раз', isMobile);
@@ -643,7 +583,16 @@ test('визуальные доказательства entrance, ошибки, 
     });
     await testInfo.attach(name, { path: screenshot, contentType: 'image/png' });
   }
-  await frozenTask(page, isMobile);
+  await frozen(page);
+  await checkScreen(page, 'Логические последовательности 4–5');
+  await animationPhase(page, timings.guideCycle / 2);
+  await capture('00-welcome');
+  await activate(page, 'Начать', isMobile);
+  await page.clock.runFor(timings.navigationLock);
+  await checkScreen(page, 'Карта занятий');
+  await animationPhase(page, timings.guideCycle / 2);
+  await capture('00-map');
+  await activate(page, lesson, isMobile);
   await animationPhase(page, timeline.sampleDot - 25);
   await capture('01-task-entrance');
   await page.clock.runFor(timeline.entrance);
@@ -698,70 +647,136 @@ test('визуальные доказательства entrance, ошибки, 
   await page.clock.runFor(timeline.entrance);
   await ready(page);
 });
-test('движется навигационная стрелка, кольцо меняет толщину', async ({
+test('Персик мягко указывает на кнопку, нажатие на изображение не запускает переход', async ({
+  page,
+}) => {
+  const cat = page.locator('.persik-guide img');
+  const start = page.getByRole('button', { name: 'Начать', exact: true });
+  const buttonBefore = await start.boundingBox();
+  const positions = [];
+  for (const time of [0, timings.guideCycle / 2]) {
+    await cat.evaluate((element, time) => {
+      const animation = element.getAnimations()[0]!;
+      animation.pause();
+      animation.currentTime = time;
+    }, time);
+    positions.push((await cat.boundingBox())!);
+    await checkScreen(page, 'Логические последовательности 4–5');
+  }
+  expect(positions[1]!.x).toBeGreaterThan(positions[0]!.x);
+  expect(positions[1]!.x - positions[0]!.x).toBeLessThan(10);
+  expect(await start.boundingBox()).toEqual(buttonBefore);
+  const box = positions[1]!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await checkScreen(page, 'Логические последовательности 4–5');
+});
+
+test('все пять неизменённых прототипных ассетов загружаются', async ({
+  page,
+}) => {
+  for (const state of ['idle', 'guide', 'thinking', 'encourage', 'celebrate']) {
+    const response = await page.request.get(
+      `/assets/persik/persik-${state}.png`,
+    );
+    expect(response.ok()).toBe(true);
+    expect(response.headers()['content-type']).toContain('image/png');
+    const dimensions = await page.evaluate(async (state) => {
+      const image = new Image();
+      image.src = `/assets/persik/persik-${state}.png`;
+      await image.decode();
+      return [image.naturalWidth, image.naturalHeight];
+    }, state);
+    expect(dimensions).toEqual([512, 724]);
+  }
+});
+
+test('спокойный Персик не двигается и не меняет положение при выборе любого ответа', async ({
   page,
   isMobile,
-}, testInfo) => {
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await checkScreen(page, 'Логические последовательности 4–5');
-  const guide = page.locator('.action-guide');
-  const start = page.getByRole('button', { name: 'Начать', exact: true });
-  async function phase(time: number, name: string) {
-    await page
-      .locator('.action-guide, .guided-action')
-      .evaluateAll((elements, time) => {
-        for (const element of elements) {
-          const animation = element.getAnimations()[0];
-          if (!animation)
-            throw new Error('Expected CSS animation for guidance');
-          animation.pause();
-          animation.currentTime = time;
-        }
-      }, time);
-    const geometry = {
-      arrow: (await guide.boundingBox())!,
-      button: (await start.boundingBox())!,
-      transform: await guide.evaluate(
-        (element) => getComputedStyle(element).transform,
-      ),
-      ring: await start.evaluate(
-        (element) => getComputedStyle(element).boxShadow,
-      ),
-    };
-    const screenshot = testInfo.outputPath(`${name}.png`);
-    await page.screenshot({
-      path: screenshot,
-      fullPage: true,
-      animations: 'allow',
-    });
-    await testInfo.attach(name, { path: screenshot, contentType: 'image/png' });
-    return geometry;
+}) => {
+  await frozenTask(page, isMobile);
+  await expect(page.locator('.persik')).toHaveAttribute(
+    'data-persik-state',
+    'idle',
+  );
+  await expect(page.locator('.persik img')).toHaveCSS('animation-name', 'none');
+  await page.clock.runFor(timeline.entrance);
+  await ready(page);
+  const initialBox = await page.locator('.persik').boundingBox();
+  for (const name of [wrong, 'Синий круг с жёлтым квадратом']) {
+    await activate(page, name, isMobile);
+    await expect(page.locator('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'encourage',
+    );
+    expect(await page.locator('.persik').boundingBox()).toEqual(initialBox);
+    await checkScreen(page, 'Попробуй ещё');
+    await page.clock.runFor(timings.choiceReaction);
+    await page.clock.runFor(timings.retry - timings.choiceReaction);
+    await ready(page);
+    await expect(page.locator('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'idle',
+    );
+    await expect(page.locator('.persik img')).toHaveCSS(
+      'animation-name',
+      'none',
+    );
+    expect(await page.locator('.persik').boundingBox()).toEqual(initialBox);
   }
-  const top = await phase(0, '07-welcome-motion-start');
-  const bottom = await phase(475, '08-welcome-motion-near');
-  const centerShift =
-    bottom.arrow.y +
-    bottom.arrow.height / 2 -
-    (top.arrow.y + top.arrow.height / 2);
-  expect(centerShift).toBeCloseTo(16, 1);
-  expect(bottom.arrow.width / top.arrow.width).toBeCloseTo(1.08, 2);
-  expect(bottom.arrow.height / top.arrow.height).toBeCloseTo(1.08, 2);
-  expect(bottom.button).toEqual(top.button);
-  expect(bottom.ring).not.toBe(top.ring);
-  expect(bottom.arrow.y + bottom.arrow.height).toBeLessThan(bottom.button.y);
-  await testInfo.attach('arrow-motion-measurements', {
-    body: JSON.stringify({ top, bottom, centerShift }, null, 2),
-    contentType: 'application/json',
-  });
-  await page
-    .locator('.action-guide, .guided-action')
-    .evaluateAll((elements) => {
-      for (const element of elements) {
-        const animation = element.getAnimations()[0];
-        if (!animation) throw new Error('Expected CSS animation for guidance');
-        animation.play();
-      }
-    });
+  await activate(page, correct, isMobile);
+  await expect(page.locator('.persik')).toHaveAttribute(
+    'data-persik-state',
+    'celebrate',
+  );
+  expect(await page.locator('.persik').boundingBox()).toEqual(initialBox);
+  await expect(page.locator('.persik img')).toHaveCSS(
+    'animation-delay',
+    '0.275s',
+  );
+  await checkScreen(page, 'Верно!');
+});
+
+test('reduced motion оставляет Персика статичным на навигации, задании и после ошибки', async ({
+  page,
+  isMobile,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await frozen(page);
+  async function staticCat(title: string, state: string) {
+    await checkScreen(page, title);
+    await expect(page.locator('.persik')).toHaveAttribute(
+      'data-persik-state',
+      state,
+    );
+    await expect(page.locator('.persik img')).toHaveCSS(
+      'animation-name',
+      'none',
+    );
+    await expect(page.locator('.persik img')).toHaveCSS('transform', 'none');
+    expect(
+      await page
+        .locator('.persik img')
+        .evaluate((element) => element.getAnimations().length),
+    ).toBe(0);
+  }
+  await staticCat('Логические последовательности 4–5', 'guide');
   await activate(page, 'Начать', isMobile);
-  await checkScreen(page, 'Карта занятий');
+  await staticCat('Карта занятий', 'guide');
+  await page.clock.runFor(timings.navigationLock);
+  await activate(page, lesson, isMobile);
+  await staticCat('Найди такой же', 'idle');
+  await activate(page, wrong, isMobile);
+  await page.clock.runFor(0);
+  await staticCat('Попробуй ещё', 'encourage');
+  await page.clock.runFor(timings.retry - 1);
+  await expect(page.locator('.answer').first()).toBeDisabled();
+  await page.clock.runFor(1);
+  await ready(page);
+  await staticCat('Попробуй ещё', 'idle');
+  await activate(page, correct, isMobile);
+  await page.clock.runFor(0);
+  await staticCat('Верно!', 'celebrate');
+  await page.clock.runFor(timings.reducedSuccess);
+  await staticCat('Занятие завершено!', 'guide');
 });

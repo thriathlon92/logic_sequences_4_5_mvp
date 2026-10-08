@@ -34,10 +34,12 @@ function expectOptions(enabled: boolean) {
   }
 }
 function expectGuide(name: string) {
-  const guides = document.querySelectorAll('.action-guide');
+  const guides = document.querySelectorAll('.persik-guide');
   expect(guides).toHaveLength(1);
   expect(guides[0]).toHaveAttribute('aria-hidden', 'true');
-  expect(guides[0]).toHaveAttribute('data-guide-target', button(name).id);
+  expect(guides[0]).toHaveAttribute('data-direction', 'right');
+  expect(guides[0]!.parentElement).toContainElement(button(name));
+  expect(document.querySelector('.action-guide')).toBeNull();
   expect(button(name)).toHaveAccessibleName(name);
 }
 
@@ -62,6 +64,24 @@ describe('Игровая петля W02', () => {
     expect(timings.reducedSuccess).toBeGreaterThanOrEqual(1500);
     expect(timings.reducedSuccess).toBeLessThanOrEqual(2000);
   });
+  it('сохраняет утверждённые задержки W02 без изменений', () => {
+    expect(timings).toEqual({
+      navigationLock: 500,
+      guideCycle: 950,
+      shell: 350,
+      samplePart: 225,
+      afterSample: 400,
+      answers: 400,
+      instruction: 225,
+      choiceReaction: 450,
+      retry: 800,
+      confettiDelay: 275,
+      confetti: 1800,
+      resultHold: 500,
+      completeTransition: 400,
+      reducedSuccess: 1750,
+    });
+  });
   it('приветствие предлагает одно доступное действие без ввода данных', () => {
     render(<App />);
     expect(screen.getByRole('heading')).toHaveFocus();
@@ -69,7 +89,7 @@ describe('Игровая петля W02', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expectGuide('Начать');
   });
-  it('оставляет единственную стрелку только на навигационных экранах', () => {
+  it('Персик указывает только на основное действие навигационных экранов', () => {
     render(<App />);
     choose('Начать');
     advance(timings.navigationLock);
@@ -87,6 +107,10 @@ describe('Игровая петля W02', () => {
     render(<App />);
     openTask(false);
     expect(phase()).toBe('entrance');
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'idle',
+    );
     expectOptions(false);
     expect(screen.getByRole('group')).toHaveAttribute('aria-busy', 'true');
   });
@@ -98,6 +122,10 @@ describe('Игровая петля W02', () => {
     advance(1);
     expectOptions(true);
     expect(phase()).toBe('ready');
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'idle',
+    );
   });
   it('игнорирует преждевременный ввод во время entrance', () => {
     render(<App />);
@@ -106,6 +134,10 @@ describe('Игровая петля W02', () => {
     choose(wrong);
     advance(timeline.entrance);
     expect(phase()).toBe('ready');
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'idle',
+    );
     expect(screen.getByRole('heading')).toHaveTextContent('Найди такой же');
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
@@ -132,11 +164,23 @@ describe('Игровая петля W02', () => {
     openTask();
     choose(wrong);
     expect(phase()).toBe('press');
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'encourage',
+    );
     expect(button(wrong)).toHaveClass('mistaken');
     expectOptions(false);
     choose(correct);
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'encourage',
+    );
     advance(timings.choiceReaction);
     expect(phase()).toBe('error');
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'encourage',
+    );
     expect(screen.getByRole('heading')).toHaveTextContent('Попробуй ещё');
   });
   it('реагирует на ошибку без раскрытия правильного ответа и без замены образца', () => {
@@ -161,6 +205,10 @@ describe('Игровая петля W02', () => {
     advance(1);
     expectOptions(true);
     expect(phase()).toBe('ready');
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'idle',
+    );
     expect(button(wrong)).not.toHaveClass('mistaken');
   });
   it('повторяет реакцию на каждую ошибку без тупика', () => {
@@ -181,6 +229,10 @@ describe('Игровая петля W02', () => {
     render(<App />);
     openTask();
     choose(correct);
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'celebrate',
+    );
     advance(timings.choiceReaction);
     expect(phase()).toBe('success');
     expectOptions(false);
@@ -192,6 +244,10 @@ describe('Игровая петля W02', () => {
     render(<App />);
     openTask();
     choose(correct);
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'celebrate',
+    );
     advance(timings.choiceReaction);
     const celebration = document.querySelector('.celebration');
     expect(celebration).toHaveAttribute('aria-hidden', 'true');
@@ -201,6 +257,10 @@ describe('Игровая петля W02', () => {
     render(<App />);
     openTask();
     choose(correct);
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'celebrate',
+    );
     advance(timings.choiceReaction);
     expect(
       screen.queryByRole('button', { name: 'Дальше' }),
@@ -222,10 +282,15 @@ describe('Игровая петля W02', () => {
     render(<App />);
     openTask();
     choose(correct);
+    const celebratingImage = document.querySelector('.persik-celebrate img');
     choose(correct);
     fireEvent.click(button(correct), { detail: 2 });
+    expect(document.querySelector('.persik-celebrate img')).toBe(
+      celebratingImage,
+    );
     advance(timings.choiceReaction);
     expect(vi.getTimerCount()).toBe(1);
+    expect(document.querySelectorAll('.persik-celebrate')).toHaveLength(1);
     advance(timeline.leave - timings.choiceReaction);
     advance(timings.completeTransition / 2);
     advance(timings.navigationLock);
@@ -243,6 +308,10 @@ describe('Игровая петля W02', () => {
     complete();
     choose('Ещё раз');
     expect(phase()).toBe('entrance');
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'idle',
+    );
     expectOptions(false);
     expect(document.querySelector('.celebration')).toBeNull();
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
@@ -274,6 +343,10 @@ describe('Игровая петля W02', () => {
     render(<App />);
     openTask(false);
     expect(phase()).toBe('ready');
+    expect(document.querySelector('.persik')).toHaveAttribute(
+      'data-persik-state',
+      'idle',
+    );
     expectOptions(true);
     choose(correct);
     advance(0);
